@@ -2,24 +2,24 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import Room
-from .serializers import ReadRoomSerializer, WriteRoomSerializer
+from .serializers import RoomSerializer
 
 
 class RoomsView(APIView):  #  Room List View
     def get(self, request):
         rooms = Room.objects.all()[:5]
-        serializer = ReadRoomSerializer(rooms, many=True).data
+        serializer = RoomSerializer(rooms, many=True).data
         return Response(serializer)
 
     def post(self, request):
         if not request.user.is_authenticated:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
 
-        serializer = WriteRoomSerializer(data=request.data)
+        serializer = RoomSerializer(data=request.data)
 
         if serializer.is_valid():
             room = serializer.save(user=request.user)
-            room_serializer = ReadRoomSerializer(room).data
+            room_serializer = RoomSerializer(room).data
             return Response(data=room_serializer, status=status.HTTP_200_OK)
 
         else:
@@ -27,16 +27,43 @@ class RoomsView(APIView):  #  Room List View
 
 
 class RoomView(APIView):  #  Each Room View
-    def get(self, request, pk):
+    def get_room(self, pk):
         try:
             room = Room.objects.get(pk=pk)
-            serializer = ReadRoomSerializer(room).data
-            return Response(serializer)
+            return room
         except Room.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        room = self.get_room(pk)
+        if room is not None:
+            serializer = RoomSerializer(room).data
+            return Response(serializer)
+        else:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-    def put(self, request):
-        pass
+    def put(self, request, pk):
+        room = self.get_room(pk)
+        if room is not None:
+            if room.user != request.user:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            serializer = RoomSerializer(room, data=request.data, partial=True)
+            if serializer.is_valid():
+                room = serializer.save()
+                return Response(RoomSerializer(room).data, status=status.HTTP_200_OK)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            print(serializer.is_valid(), serializer.errors)
+            return Response()
+        else:
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
-    def delete(self, request):
-        pass
+    def delete(self, request, pk):
+        room = self.get_room(pk)
+        if room is not None:
+            if room.user != request.user:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            room.delete()
+            return Response(status=status.HTTP_200_OK)
+        else:
+            return Response(status=status.HTTP_404_NOT_FOUND)
